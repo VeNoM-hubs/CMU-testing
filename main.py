@@ -1,115 +1,53 @@
-import os
-from pathlib import Path
+import os  # For accessing environment variables
+from openai import OpenAI  # Import the OpenAI client library
+from dotenv import load_dotenv  # Library to load environment variables from .env file
 
-from dotenv import load_dotenv
-from openai import OpenAI
-
-DEFAULT_BASE_URL = "https://ai-gateway.andrew.cmu.edu/v1"
-DEFAULT_MODEL = "gpt-4o-mini"
-KEY_FILENAMES = ("api key.txt", "API key", "api_key.txt", ".api_key")
-
-
-def normalize_api_key(key: str, base_url: str) -> str:
-    """CMU AI Gateway virtual keys must start with 'sk-'."""
-    if "ai-gateway.andrew.cmu.edu" in base_url and not key.startswith("sk-"):
-        return f"sk-{key}"
-    return key
-
-
-def load_api_key(base_url: str) -> str:
-    if key := os.environ.get("CHAT_API_KEY", "").strip():
-        return normalize_api_key(key, base_url)
-
-    script_dir = Path(__file__).resolve().parent
-    for name in KEY_FILENAMES:
-        path = script_dir / name
-        if path.is_file():
-            key = path.read_text(encoding="utf-8").strip()
-            if key:
-                return normalize_api_key(key, base_url)
-
-    raise ValueError(
-        "Missing API key. Set CHAT_API_KEY or place your key in one of: "
-        + ", ".join(KEY_FILENAMES)
-    )
-
-
-def print_help(model: str, base_url: str) -> None:
-    print(
-        f"\nCommands:\n"
-        f"  /help            Show this help\n"
-        f"  /quit, /exit     End the chat\n"
-        f"  /clear           Clear conversation history\n"
-        f"  /model <name>    Switch model (current: {model})\n"
-        f"\nConfig (env vars):\n"
-        f"  CHAT_API_KEY     API key (overrides key file)\n"
-        f"  CHAT_API_BASE    API base URL (current: {base_url})\n"
-        f"  CHAT_MODEL       Default model (current: {model})\n"
-    )
-
-
-def run_terminal_chat() -> None:
+def run_llm7_terminal():
+    # Step 1: Load environment variables from .env file into the environment
     load_dotenv()
+    
+    # Retrieve the LLM7 API key from environment variables
+    api_key = os.environ.get("LLM7_API_KEY")
+    if not api_key:
+        # Raise an error if the API key is missing
+        raise ValueError("Runtime Error: Missing LLM7_API_KEY in your local .env file.")
 
-    base_url = os.environ.get("CHAT_API_BASE", DEFAULT_BASE_URL).strip()
-    model = os.environ.get("CHAT_MODEL", DEFAULT_MODEL).strip()
-    api_key = load_api_key(base_url)
-
-    client = OpenAI(base_url=base_url, api_key=api_key)
-    messages: list[dict[str, str]] = []
-
-    print("Terminal LLM Chat")
-    print(f"Model: {model}  |  API: {base_url}")
-    print("Type a message and press Enter. /help for commands.\n")
+    # Step 2: Create an OpenAI client specifying the LLM7 endpoint and API key
+    client = OpenAI(
+        base_url="https://api.llm7.io/v1",
+        api_key=api_key
+    )
 
     while True:
         try:
-            user_input = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nBye.")
-            break
+            # Step 3: Prompt user for input via terminal
+            user_prompt = input("\nType your prompt for LLM7 (or type 'exit' to quit): ")
+            if user_prompt.lower() in ['exit', 'quit']:
+                print("Exiting LLM7 terminal chat. Goodbye!")
+                break
 
-        if not user_input:
-            continue
+            print("Transmitting request packet to LLM7 edge aggregation layer...")
 
-        lowered = user_input.lower()
-        if lowered in {"/quit", "/exit", "quit", "exit"}:
-            print("Bye.")
-            break
-        if lowered == "/help":
-            print_help(model, base_url)
-            continue
-        if lowered == "/clear":
-            messages.clear()
-            print("Conversation cleared.")
-            continue
-        if lowered.startswith("/model"):
-            parts = user_input.split(maxsplit=1)
-            if len(parts) < 2 or not parts[1].strip():
-                print(f"Usage: /model <name>  (current: {model})")
-                continue
-            model = parts[1].strip()
-            print(f"Switched to model: {model}")
-            continue
-
-        messages.append({"role": "user", "content": user_input})
-        print("Assistant: ", end="", flush=True)
-
-        try:
             response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.7,
+                model="default",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": user_prompt
+                    }
+                ],
+                temperature=0.7  # Controls the randomness of the output
             )
-            reply = response.choices[0].message.content or ""
-            print(reply)
-            messages.append({"role": "assistant", "content": reply})
-        except Exception as exc:
-            messages.pop()
-            print(f"\nError: {exc}")
 
-        print()
+            llm7_output = response.choices[0].message.content
+            print("\n--- LLM7 Response ---")
+            print(llm7_output)
+            print("---------------------\n")
 
+        except Exception as e:
+            # Print error details if API request fails
+            print(f"\nExecution Failure: Connection intercepted or dropped by the gateway.\nDetails: {e}")
 
 if __name__ == "__main__":
-    run_terminal_chat()
+    # Execute the terminal chat function if the script is run directly
+    run_llm7_terminal()
